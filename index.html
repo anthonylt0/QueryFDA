@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Lookup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .search-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .result-container {
+            margin-top: 20px;
+        }
+
+        .result-item {
+            background-color: white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-item p {
+            margin: 5px 0;
+        }
+
+        .button-container {
+            text-align: center;
+        }
+
+        .fda-codes {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e0f7fa;
+            border-radius: 5px;
+        }
+
+        .fda-codes ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .fda-codes li {
+            margin: 5px 0;
+        }
+
+        .tracked-indicator {
+            background-color: #ffeb3b;
+            color: #000;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Device Lookup</h1>
+
+    <div class="search-container">
+        <label for="searchTerm">Enter Device Name or Keyword:</label>
+        <input type="text" id="searchTerm" placeholder="Enter search term..." />
+        <button onclick="queryAndExtractData()">Search</button>
+    </div>
+
+    <div class="result-container" id="resultContainer">
+        <!-- Search results will be displayed here -->
+    </div>
+
+    <script>
+        // Example list of tracked FDA product codes
+        const arrTracked = [
+          "NPT",
+          "FTR",
+          "MPD",
+          "MVK",
+          "NIK",
+          "DRK",
+          "LDD",
+          "LWS",
+          "MRM",
+          "NSA",
+          "MKJ",
+          "DTB",
+          "NHW",
+          "NVY",
+          "NVN",
+          "MIH",
+          "LWQ",
+          "LWR",
+          "DYE",
+          "NEI",
+          "NPF",
+          "BZQ",
+          "DSZ",
+          "DTD",
+          "LWP",
+          "DXY",
+          "NPV",
+          "MWH",
+          "NKE",
+          "NVZ",
+          "LWW",
+          "OVJ",
+          "LWO",
+          "FIH",
+          "LKK",
+          "MIR",
+          "MUZ",
+          "GZA",
+          "GZE",
+          "OIR",
+          "NHL",
+          "LZD",
+          "MDL",
+          "NOU",
+          "MNS",
+          "MNT",
+          "NQY",
+          "ONZ",
+        ];
+
+        let items = [];
+
+        async function queryAndExtractData() {
+            const searchTerm = document.getElementById("searchTerm").value.trim();
+
+            if (!searchTerm) {
+                return; // Skip the search if input is empty
+            }
+
+            const searchUrl = `https://accessgudid.nlm.nih.gov/devices/search?query=${encodeURIComponent(searchTerm)}`;
+
+            const response = await fetch(searchUrl);
+
+            if (!response.ok) {
+                console.error('Error fetching data from search page.');
+                return;
+            }
+
+            const html = await response.text();
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const resultRows = doc.querySelectorAll('.resultRow');
+            items = [];
+
+            resultRows.forEach(result => {
+                let item = {};
+
+                const nameElement = result.querySelector('h3 a');
+                if (nameElement) {
+                    item.name = nameElement.innerText.trim();
+                    item.id = nameElement.href.split('/').pop();
+                }
+
+                const descriptionElement = result.querySelector('.description');
+                if (descriptionElement) {
+                    item.description = descriptionElement.innerText.trim();
+                }
+
+                const companyElement = result.querySelector('.row .xsmall-12.medium-6.columns');
+                if (companyElement) {
+                    let companyName = companyElement.innerText.trim();
+                    if (companyName.includes('Company Name:')) {
+                        item.companyName = companyName.replace('Company Name:', '').trim();
+                    }
+                }
+
+                if (Object.keys(item).length > 0) {
+                    items.push(item);
+                }
+            });
+
+            displayResults(items);
+        }
+
+        function displayResults(items) {
+            const resultContainer = document.getElementById("resultContainer");
+            resultContainer.innerHTML = '';
+
+            if (items.length === 0) {
+                resultContainer.innerHTML = '<p>No results found.</p>';
+            } else {
+                items.forEach((item, index) => {
+                    const resultItemDiv = document.createElement('div');
+                    resultItemDiv.classList.add('result-item');
+                    resultItemDiv.innerHTML = `
+                        <h3>${item.name}</h3>
+                        <p><strong>ID:</strong> ${item.id}</p>
+                        <p><strong>Company:</strong> ${item.companyName}</p>
+                        <p><strong>Description:</strong> ${item.description}</p>
+                        <button onclick="selectItem(${index})">Select</button>
+                        <div id="fda-product-codes-${index}" class="fda-codes"></div>
+                    `;
+                    resultContainer.appendChild(resultItemDiv);
+                });
+            }
+        }
+
+        async function selectItem(index) {
+            const selectedItem = items[index];
+
+            if (!selectedItem.id || selectedItem.id.length < 10) {
+                return; // Skip if ID is invalid
+            }
+
+            const apiUrl = `https://accessgudid.nlm.nih.gov/api/v2/devices/lookup.json?di=${selectedItem.id}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+
+                if (data && data.gudid.device.productCodes && data.gudid.device.productCodes.fdaProductCode) {
+                    const fdaProductCodes = data.gudid.device.productCodes.fdaProductCode;
+                    displayFdaProductCodes(fdaProductCodes, index);
+                } else {
+                    alert('No FDA product codes found for this device.');
+                }
+            } catch (error) {
+                alert('Error fetching device details. Please try again.');
+            }
+        }
+
+        function displayFdaProductCodes(fdaProductCodes, index) {
+            const fdaContainer = document.getElementById(`fda-product-codes-${index}`);
+            fdaContainer.innerHTML = '<strong>FDA Product Codes:</strong><ul>';
+
+            fdaProductCodes.forEach(code => {
+                const isTracked = arrTracked.includes(code.productCode);
+                let indicator = '';
+                if (isTracked) {
+                    indicator = `<span class="tracked-indicator"><b>Tracked</b></span>`;
+                }
+
+                fdaContainer.innerHTML += `
+                    <strong>Product Code:</strong> ${code.productCode} - <strong>Description:</strong> ${code.productCodeName} ${indicator}
+                `;
+            });
+
+            fdaContainer.innerHTML += '</ul>';
+        }
+    </script>
+
+</body>
+</html>
